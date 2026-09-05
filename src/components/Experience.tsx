@@ -3,23 +3,26 @@ import SectionHeading from "@/components/SectionHeading";
 const experiences = [
   {
     role: "Senior Civil Engineer",
+    dates: "April 2022 — May 2026",
+    previousRole: "Civil Engineer",
+    previousDates: "February 2018 — March 2022",
+    promotion: "Promoted to Senior Civil Engineer in April 2022.",
     employer: "Southern Concrete Pile Public Company Limited",
-    dates: "February 2018 — May 2026",
     summary:
       "Delivered structural and foundation engineering solutions for industrial, commercial, and infrastructure projects involving prestressed concrete piles, bored piles, and steel pipe piles.",
     responsibilities: [
       "Performed structural calculations, pile-capacity analysis, and design verification in accordance with Thai Industrial Standards (TIS) and Department of Public Works (DPT) standards.",
       "Prepared BOQs, cost estimates, technical proposals, and commercial evaluations for project bidding and engineering decisions.",
       "Evaluated pile deviation, pile inclination, constructability challenges, and site constraints with clients, consultants, contractors, and multidisciplinary teams.",
-      "Reviewed calculations, reinforcement detailing, shop drawings, and technical documentation prepared by junior engineers.",
+      "Reviewed calculations, reinforcement detailing, shop drawings, and technical documentation.",
       "Coordinated engineering, production, quality assurance, logistics, and commercial teams.",
-      "Mentored junior engineers and provided technical guidance.",
+      "Provided technical guidance and review support to team members.",
     ],
   },
   {
     role: "Office Engineer",
-    employer: "Koranit Construction Co., Ltd.",
     dates: "August 2016 — August 2017",
+    employer: "Koranit Construction Co., Ltd.",
     summary: null,
     responsibilities: [
       "Reviewed tender documents, specifications, drawings, and Bills of Quantities.",
@@ -49,9 +52,22 @@ export default function Experience() {
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8a6544]">Role</p>
                     <h3 className="mt-2 text-xl font-bold text-[#302b27]">{experience.role}</h3>
-                    <p className="mt-2 text-[#6f665e]">{experience.employer}</p>
+                    <p className="mt-1 text-sm text-[#655a51]">{experience.dates}</p>
+                    {experience.previousRole ? (
+                      <div className="mt-4 border-l-2 border-[#d8cabd] pl-4">
+                        <p className="font-semibold text-[#403a35]">{experience.previousRole}</p>
+                        <p className="mt-1 text-sm text-[#6f665e]">{experience.previousDates}</p>
+                      </div>
+                    ) : null}
+                    <p className="mt-4 text-[#6f665e]">{experience.employer}</p>
                   </div>
-                  <p className="w-fit rounded-full border border-[#ded2c7] bg-[#f4ede6] px-4 py-2 text-sm text-[#655a51]">{experience.dates}</p>
+                  {experience.promotion ? (
+                    <p className="w-fit max-w-xs rounded-2xl border border-[#d8cabd] bg-[#f4ede6] px-4 py-3 text-sm font-semibold leading-6 text-[#655a51]">
+                      {experience.promotion}
+                    </p>
+                  ) : (
+                    <p className="w-fit rounded-full border border-[#ded2c7] bg-[#f4ede6] px-4 py-2 text-sm text-[#655a51]">{experience.dates}</p>
+                  )}
                 </div>
                 <div className="mt-7 border-t border-[#e7ded6] pt-6">
                   {experience.summary ? (
