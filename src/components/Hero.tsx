@@ -9,3 +9,5 @@ function EngineeringVisual() {
     </div>
   );
 }
+
+export default EngineeringVisual;
