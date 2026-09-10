@@ -7,12 +7,16 @@ type JobStatus =
   | "In Evaluation"
   | "HR Contact"
   | "Interview"
+  | "Interviewed"
+  | "Viewed"
+  | "Documents Sent"
   | "Offer"
   | "Rejected"
   | "Closed";
 
 type Job = {
   id: string;
+  rowNumber?: number;
   company: string;
   role: string;
   location: string;
@@ -22,6 +26,12 @@ type Job = {
   nextAction: string;
   salary: string;
   notes: string;
+  resumeVersion?: string;
+  documentsSent?: string;
+  contact?: string;
+  lastAction?: string;
+  outcome?: string;
+  interviewStatus?: string;
 };
 
 const STORAGE_KEY = "ning-job-tracker-v1";
@@ -30,6 +40,9 @@ const statuses: JobStatus[] = [
   "In Evaluation",
   "HR Contact",
   "Interview",
+  "Interviewed",
+  "Viewed",
+  "Documents Sent",
   "Offer",
   "Rejected",
   "Closed",
@@ -40,6 +53,9 @@ const statusStyles: Record<JobStatus, string> = {
   "In Evaluation": "bg-amber-50 text-amber-700 border-amber-200",
   "HR Contact": "bg-violet-50 text-violet-700 border-violet-200",
   Interview: "bg-orange-50 text-orange-700 border-orange-200",
+  Interviewed: "bg-orange-50 text-orange-700 border-orange-200",
+  Viewed: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "Documents Sent": "bg-cyan-50 text-cyan-700 border-cyan-200",
   Offer: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Rejected: "bg-rose-50 text-rose-700 border-rose-200",
   Closed: "bg-stone-100 text-stone-600 border-stone-200",
@@ -60,6 +76,10 @@ const seedJobs: Job[] = [
   },
 ];
 
+function normalizeStatus(value: string): JobStatus {
+  return statuses.includes(value as JobStatus) ? (value as JobStatus) : "Applied";
+}
+
 function formatDate(value: string) {
   if (!value) return "—";
   return value.replace("T", " ");
@@ -70,14 +90,38 @@ export default function JobsPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | JobStatus>("All");
   const [showForm, setShowForm] = useState(false);
+  const [syncState, setSyncState] = useState<"idle" | "loading" | "ok" | "offline">("idle");
+  const [syncMessage, setSyncMessage] = useState("");
+
+  async function loadFromSheet() {
+    setSyncState("loading");
+    setSyncMessage("Syncing with Google Sheet…");
+    try {
+      const response = await fetch("/api/jobs", { cache: "no-store" });
+      if (!response.ok) throw new Error("Google Sheet connection is not ready yet.");
+      const data = await response.json();
+      const sheetJobs: Job[] = (data.jobs || []).map((job: Job) => ({
+        ...job,
+        status: normalizeStatus(String(job.status || "Applied")),
+      }));
+      setJobs(sheetJobs);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sheetJobs));
+      setSyncState("ok");
+      setSyncMessage(`Synced ${sheetJobs.length} applications from Google Sheet`);
+    } catch {
+      try {
+        const stored = window.localStorage.getItem(STORAGE_KEY);
+        if (stored) setJobs(JSON.parse(stored));
+      } catch {
+        // Keep seed data.
+      }
+      setSyncState("offline");
+      setSyncMessage("Using local data. Add Vercel Google credentials to enable live Sheet sync.");
+    }
+  }
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) setJobs(JSON.parse(stored));
-    } catch {
-      // Keep seed data if browser storage is unavailable or malformed.
-    }
+    loadFromSheet();
   }, []);
 
   useEffect(() => {
@@ -94,7 +138,7 @@ export default function JobsPage() {
       const matchesFilter = filter === "All" || job.status === filter;
       const matchesSearch =
         !q ||
-        [job.company, job.role, job.location, job.source, job.notes]
+        [job.company, job.role, job.location, job.source, job.notes, job.contact]
           .join(" ")
           .toLowerCase()
           .includes(q);
@@ -105,20 +149,37 @@ export default function JobsPage() {
   const activeCount = jobs.filter(
     (job) => !["Rejected", "Closed"].includes(job.status),
   ).length;
-  const interviewCount = jobs.filter((job) => job.status === "Interview").length;
+  const interviewCount = jobs.filter((job) => ["Interview", "Interviewed"].includes(job.status)).length;
   const offerCount = jobs.filter((job) => job.status === "Offer").length;
 
-  function updateStatus(id: string, status: JobStatus) {
+  async function updateStatus(id: string, status: JobStatus) {
+    const job = jobs.find((item) => item.id === id);
     setJobs((current) =>
-      current.map((job) => (job.id === id ? { ...job, status } : job)),
+      current.map((item) => (item.id === id ? { ...item, status } : item)),
     );
+
+    if (job?.rowNumber) {
+      try {
+        const response = await fetch("/api/jobs", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rowNumber: job.rowNumber, status }),
+        });
+        if (!response.ok) throw new Error();
+        setSyncState("ok");
+        setSyncMessage("Status saved to Google Sheet ✓");
+      } catch {
+        setSyncState("offline");
+        setSyncMessage("Status changed locally, but Google Sheet sync failed.");
+      }
+    }
   }
 
   function removeJob(id: string) {
     setJobs((current) => current.filter((job) => job.id !== id));
   }
 
-  function addJob(event: FormEvent<HTMLFormElement>) {
+  async function addJob(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const company = String(form.get("company") || "").trim();
@@ -132,15 +193,31 @@ export default function JobsPage() {
       location: String(form.get("location") || "").trim(),
       appliedAt: String(form.get("appliedAt") || "").trim(),
       source: String(form.get("source") || "").trim(),
-      status: (String(form.get("status") || "Applied") as JobStatus),
+      status: normalizeStatus(String(form.get("status") || "Applied")),
       nextAction: String(form.get("nextAction") || "").trim(),
       salary: String(form.get("salary") || "").trim(),
       notes: String(form.get("notes") || "").trim(),
+      lastAction: "Application added from web tracker",
     };
 
     setJobs((current) => [newJob, ...current]);
     event.currentTarget.reset();
     setShowForm(false);
+
+    try {
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newJob),
+      });
+      if (!response.ok) throw new Error();
+      setSyncState("ok");
+      setSyncMessage("New application saved to Google Sheet ✓");
+      await loadFromSheet();
+    } catch {
+      setSyncState("offline");
+      setSyncMessage("Saved locally. Google Sheet sync is not available yet.");
+    }
   }
 
   return (
@@ -153,19 +230,38 @@ export default function JobsPage() {
             </a>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Job Application Tracker</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Track every application, status change, interview and next action in one place.
+              Google Sheet is the source of truth. The app keeps a local fallback for offline use.
             </p>
           </div>
-          <button
-            onClick={() => setShowForm((value) => !value)}
-            className="rounded-xl bg-[#ff642c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#e95725]"
-          >
-            {showForm ? "Close" : "+ Add Job"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={loadFromSheet}
+              disabled={syncState === "loading"}
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              ↻ Sync Sheet
+            </button>
+            <button
+              onClick={() => setShowForm((value) => !value)}
+              className="rounded-xl bg-[#ff642c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#e95725]"
+            >
+              {showForm ? "Close" : "+ Add Job"}
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
+        <div className={`mb-5 rounded-xl border px-4 py-3 text-sm font-semibold ${
+          syncState === "ok"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : syncState === "offline"
+              ? "border-amber-200 bg-amber-50 text-amber-700"
+              : "border-slate-200 bg-white text-slate-600"
+        }`}>
+          {syncMessage || "Ready"}
+        </div>
+
         <section className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Jobs</p>
@@ -187,7 +283,7 @@ export default function JobsPage() {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <input name="company" required placeholder="Company *" className="rounded-xl border border-slate-300 px-4 py-3" />
               <input name="role" required placeholder="Role *" className="rounded-xl border border-slate-300 px-4 py-3" />
-              <input name="location" placeholder="Location" className="rounded-xl border border-slate-300 px-4 py-3" />
+              <input name="location" placeholder="Location / workdays" className="rounded-xl border border-slate-300 px-4 py-3" />
               <input name="source" placeholder="Source / job board" className="rounded-xl border border-slate-300 px-4 py-3" />
               <input name="appliedAt" type="datetime-local" className="rounded-xl border border-slate-300 px-4 py-3" />
               <input name="salary" placeholder="Salary / expected compensation" className="rounded-xl border border-slate-300 px-4 py-3" />
@@ -261,13 +357,23 @@ export default function JobsPage() {
                 </div>
               </div>
 
-              {job.notes && <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{job.notes}</p>}
+              {(job.lastAction || job.interviewStatus || job.contact) && (
+                <div className="mt-5 grid gap-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600 md:grid-cols-3">
+                  <p><strong>Last:</strong> {job.lastAction || "—"}</p>
+                  <p><strong>Interview:</strong> {job.interviewStatus || "—"}</p>
+                  <p><strong>Contact:</strong> {job.contact || "—"}</p>
+                </div>
+              )}
 
-              <div className="mt-5 flex justify-end">
-                <button onClick={() => removeJob(job.id)} className="text-xs font-semibold text-slate-400 hover:text-rose-600">
-                  Remove
-                </button>
-              </div>
+              {job.notes && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">{job.notes}</p>}
+
+              {!job.rowNumber && (
+                <div className="mt-5 flex justify-end">
+                  <button onClick={() => removeJob(job.id)} className="text-xs font-semibold text-slate-400 hover:text-rose-600">
+                    Remove local item
+                  </button>
+                </div>
+              )}
             </article>
           ))}
 
