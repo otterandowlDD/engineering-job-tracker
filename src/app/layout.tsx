@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: "Ning | Civil / Structural Engineer",
   description:
     "Portfolio of Ning, a civil and structural engineer focused on foundation engineering, cost awareness, and technical coordination.",
+  verification: {
+    google: "JTfPu8pGCNNY4Zmy3wCJ3q4v5frR5vVEw5Bgn_sKIt4",
+  },
 };
 
 export default function RootLayout({
